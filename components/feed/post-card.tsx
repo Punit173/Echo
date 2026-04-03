@@ -1,0 +1,191 @@
+"use client"
+
+import * as React from "react"
+import ReactMarkdown from "react-markdown"
+import { formatDistanceToNow } from "date-fns"
+import { Github, MessageSquare, Share2, ExternalLink, Bot, ShieldCheck, ShieldAlert, Trash2, Loader2 } from "lucide-react"
+import { LikeButton } from "./like-button"
+import { CommentSection } from "./comment-section"
+import { toggleMonitoringAction } from "@/app/actions/agent"
+import { deletePostAction } from "@/app/actions/feed"
+
+interface PostProps {
+    post: {
+        id: string
+        title: string
+        content: string
+        repo_link: string | null
+        created_at: string
+        profiles: {
+            username: string
+            avatar_url: string
+        }
+        likes_count: number
+        comments_count: number
+        user_has_liked: boolean
+        is_monitored: boolean
+        user_id: string
+        image_url: string | null
+        linked_repos?: string[] // Array of repo IDs from monitored_posts
+    }
+    currentUserId: string
+}
+
+export function PostCard({ post, currentUserId }: PostProps) {
+    const [showComments, setShowComments] = React.useState(false)
+    const [isMonitored, setIsMonitored] = React.useState(post.is_monitored)
+    const [isToggling, setIsToggling] = React.useState(false)
+    const [isDeleting, setIsDeleting] = React.useState(false)
+    const [confirmDelete, setConfirmDelete] = React.useState(false)
+    const [imageError, setImageError] = React.useState(false)
+
+    const handleToggleMonitoring = async () => {
+        setIsToggling(true)
+        const result = await toggleMonitoringAction(post.id, post.repo_link)
+        if (result.success) {
+            setIsMonitored(result.active!)
+        }
+        setIsToggling(false)
+    }
+
+    const handleDelete = async () => {
+        if (!confirmDelete) {
+            setConfirmDelete(true)
+            setTimeout(() => setConfirmDelete(false), 3000)
+            return
+        }
+
+        setIsDeleting(true)
+        const result = await deletePostAction(post.id)
+        if (result.error) {
+            alert(result.error)
+            setIsDeleting(false)
+            setConfirmDelete(false)
+        }
+    }
+
+    return (
+        <div className="border-2 border-black bg-white shadow-brutalist-large overflow-hidden transition-all hover:-translate-y-1 hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+            <div className="border-b-2 border-black bg-neutral-50 px-6 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <img
+                        src={post.profiles.avatar_url || `https://api.dicebear.com/7.x/identicon/svg?seed=${post.profiles.username}`}
+                        className="size-8 border border-black"
+                        alt={post.profiles.username}
+                        onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${post.profiles.username}`
+                        }}
+                    />
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-tight text-black">{post.profiles.username}</p>
+                        <p className="text-[10px] font-bold text-black/40 uppercase tracking-tighter">
+                            {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+                        </p>
+                    </div>
+                </div>
+                {/* Display all linked repos */}
+                <div className="flex flex-wrap gap-1">
+                    {(post.linked_repos && post.linked_repos.length > 0 ? post.linked_repos : (post.repo_link ? [post.repo_link.replace('https://github.com/', '')] : [])).map((repoId, idx) => (
+                        <span
+                            key={idx}
+                            className="flex items-center gap-1 border border-black bg-white px-2 py-1 text-[10px] font-black uppercase tracking-widest text-black/50"
+                        >
+                            <Github className="h-3 w-3" />
+                            {repoId.split('/').pop()}
+                        </span>
+                    ))}
+                </div>
+            </div>
+
+            {post.image_url && (
+                <div className="border-b-2 border-black overflow-hidden bg-neutral-100 aspect-video flex items-center justify-center relative group">
+                    {!imageError ? (
+                        <img
+                            src={post.image_url}
+                            alt={post.title}
+                            className="w-full h-full object-cover transition-all duration-500"
+                            onError={() => setImageError(true)}
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center gap-2 text-black/20">
+                            <Bot className="size-8" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-center px-4">
+                                Connection Interrupted: Image Unavailable
+                            </span>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div className="p-8">
+                <h3 className="text-2xl font-black uppercase tracking-tight mb-4 text-black italic">
+                    {post.title}
+                </h3>
+                <div className="prose prose-sm max-w-none text-black/70 font-medium leading-relaxed prose-headings:font-black prose-headings:uppercase prose-code:bg-neutral-100 prose-code:px-1 prose-code:rounded-none">
+                    <ReactMarkdown>{post.content}</ReactMarkdown>
+                </div>
+            </div>
+
+            <div className="border-t-2 border-black px-6 py-4 flex items-center justify-between bg-white">
+                <div className="flex items-center gap-8">
+                    <LikeButton
+                        postId={post.id}
+                        userId={currentUserId}
+                        initialLikes={post.likes_count}
+                        initialLiked={post.user_has_liked}
+                    />
+                    <button
+                        onClick={() => setShowComments(!showComments)}
+                        className="group flex items-center gap-2 text-xs font-black uppercase tracking-widest text-black/30 hover:text-black transition-colors"
+                    >
+                        <MessageSquare className="h-4 w-4" />
+                        <span>Discuss ({post.comments_count})</span>
+                    </button>
+
+                    {currentUserId === post.user_id && (
+                        <button
+                            onClick={handleToggleMonitoring}
+                            disabled={isToggling}
+                            className={`group flex items-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${isMonitored
+                                ? "text-[#00FF41] hover:text-[#00FF41]/70"
+                                : "text-black/30 hover:text-black"
+                                }`}
+                            title={isMonitored ? "Agent is monitoring this post" : "Enable Echo Agent for this post"}
+                        >
+                            <Bot className={`h-4 w-4 ${isMonitored ? "animate-pulse" : ""}`} />
+                            <span>{isMonitored ? "Agent Active" : "Enable Agent"}</span>
+                        </button>
+                    )}
+                </div>
+                <div className="flex items-center gap-4">
+                    {currentUserId === post.user_id && (
+                        <button
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                            className={`transition-all ${confirmDelete ? "text-red-600 scale-110" : "text-black/30 hover:text-red-600"
+                                }`}
+                            title={confirmDelete ? "Click again to confirm delete" : "Delete post"}
+                        >
+                            {isDeleting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Trash2 className="h-4 w-4" />
+                            )}
+                        </button>
+                    )}
+                    <button className="text-black/30 hover:text-black">
+                        <Share2 className="h-4 w-4" />
+                    </button>
+                </div>
+            </div>
+
+            {showComments && (
+                <div className="border-t-2 border-black bg-neutral-50/50 p-6">
+                    <div className="max-w-2xl mx-auto">
+                        <CommentSection postId={post.id} currentUserId={currentUserId} />
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
