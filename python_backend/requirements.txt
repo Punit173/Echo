@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+sentence-transformers
+torch
+pydantic
+supabase
+python-dotenv
+requests
+llama-cpp-python
+huggingface_hub
